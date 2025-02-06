@@ -46,15 +46,28 @@ vec_env = make_vec_env(
 # %% ==========================================================================
 # Set up and run behavioral cloning
 # =============================================================================
-from trajectories import transitions, agg_rew
+from expert_trajectories import transitions, agg_rew
+
+batch_sizes = [32, 64, 128]
+
 
 bc_trainer = bc.BC(
     observation_space=vec_env.observation_space,
     action_space=vec_env.action_space,
     demonstrations=transitions,
-    rng=rng,
+    batch_size=batch_sizes[0],
+    rng=rng
 )
-bc_trainer.train(n_epochs=10)
+bc_trainer.train(n_epochs=20)
+
+# %% ==========================================================================
+# Get state-action values
+# =============================================================================
+import torch
+
+obs = torch.tensor(vec_env.reset(), dtype=torch.float32)
+action, value, features = bc_trainer.policy.forward(obs)  # Get the raw features
+print("Raw network features (before tanh or activation):", features)
 
 # %% ==========================================================================
 # Evaluate rewards and success rates
@@ -94,8 +107,7 @@ print(f"empirical Success Rate: {sum(emp_succ)/27:.2f}%")
 # %% ==========================================================================
 # Evaluate actions distributions
 # =============================================================================
-import matplotlib.pyplot as plt
-
+actions_expert = transitions.acts  # Collect actions from the expert
 # Get model actions and trajectories
 actions_bc = []  # Collect actions from the BC model
 traject_bc = []  # Collect states from BC trajectories
@@ -106,18 +118,6 @@ for _ in range(450):
         action, _ = bc_trainer.policy.predict(obs, deterministic=True)
         obs = vec_env.step(action)[0]
         actions_bc = actions_bc + list(action)
-    
-## Compare action distributions
-# Get expert actions
-actions_expert = transitions.acts  # Collect actions from the expert
-# Plot action distributions
-plt.hist(actions_bc, bins=20, alpha=0.5, label="BC Policy")
-plt.hist(actions_expert, bins=20, alpha=0.5, label="Expert Policy")
-plt.legend()
-plt.xlabel("Actions")
-plt.ylabel("Frequency")
-plt.title("Action Distributions: BC vs Expert")
-plt.show()
 
 ## Compare state-action pairs
 # Get expert states
@@ -135,3 +135,13 @@ trajs = pd.merge(ag_traj_ex, ag_traj_bc, left_index=True, right_index=True, how=
 trajs.columns = ['expert', 'bc_model']
 correlation = trajs[['expert', 'bc_model']].corr()
 print(correlation)
+
+# # Plot action distributions
+# import matplotlib.pyplot as plt
+# plt.hist(actions_bc, bins=20, alpha=0.5, label="BC Policy")
+# plt.hist(actions_expert, bins=20, alpha=0.5, label="Expert Policy")
+# plt.legend()
+# plt.xlabel("Actions")
+# plt.ylabel("Frequency")
+# plt.title("Action Distributions: BC vs Expert")
+# plt.show()
